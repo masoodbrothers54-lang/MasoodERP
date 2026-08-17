@@ -1481,12 +1481,11 @@ body,
                         </div>
 
                         <div class="table-container" style="flex-grow: 1; overflow-y: auto;">
-                            <table class="cart-table">
-                                <thead><tr><th>Invoice ID</th><th>Customer</th><th>Total (Debit)</th><th>Paid (Credit)</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead>
-                                <tbody id="partial-invoices-table-body"></tbody>
-                            </table>
-                        </div>
-                    </div>
+    <table class="cart-table">
+        <thead><tr><th>Date</th><th>Invoice ID</th><th>Customer</th><th>Total (Debit)</th><th>Paid (Credit)</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody id="partial-invoices-table-body"></tbody>
+    </table>
+</div>
 
                     <!-- Modal/Expanded View for Adding/Editing Payments -->
                     <div id="payment-modal" class="manage-form" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 100; max-width: 500px; padding: 30px; border: 1px solid var(--border-color);">
@@ -4179,29 +4178,33 @@ function renderPartialPaymentTable() {
     ).sort((a,b) => b.invoiceId - a.invoiceId)
 
 
-    filteredInvoices.forEach(invoice => {
-        const row = document.createElement('tr');
-        const statusClass = getStatusClass(invoice.status);
-        const remainingColor = invoice.remainingBalance > 0.01 ? 'var(--danger-color)' : 'var(--success-color)';
-        const isFullyPaid = invoice.status === 'Fully Paid';
+   filteredInvoices.forEach(invoice => {
+    const row = document.createElement('tr');
+    const statusClass = getStatusClass(invoice.status);
+    const remainingColor = invoice.remainingBalance > 0.01 ? 'var(--danger-color)' : 'var(--success-color)';
+    const isFullyPaid = invoice.status === 'Fully Paid';
+    
+    // Invoice ki creation date format karne ke liye
+    const invoiceDate = invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '-';
 
-        row.innerHTML = `
-            <td>${invoice.invoiceId}</td>
-            <td>${invoice.customerName}</td>
-            <td>${CURRENCY_SYMBOL}${invoice.totalAmount.toFixed(2)}</td>
-            <td>${CURRENCY_SYMBOL}${invoice.paidAmount.toFixed(2)}</td>
-            <td style="color: ${remainingColor}; font-weight: bold;">${CURRENCY_SYMBOL}${invoice.remainingBalance.toFixed(2)}</td>
-            <td><span class="${statusClass}">${invoice.status}</span></td>
-            <td>
-                <button class="btn btn-sm btn-info" onclick="openPaymentModal('${invoice.invoiceId}')" ${isFullyPaid ? 'disabled' : ''}>Add Payment</button>
-                <button class="btn btn-sm btn-secondary" onclick="openViewPaymentsModal('${invoice.invoiceId}')">View Payments</button> 
-                <button class="btn btn-sm btn-warning" onclick="editSaleInvoice('${invoice.invoiceId}')">Edit</button>
-                <button class="btn btn-sm btn-primary" onclick="generateInvoicePDF('${invoice.invoiceId}')">PDF</button>
-                <button class="btn btn-sm btn-danger" onclick="initiateSellReturn('${invoice.invoiceId}')">Return</button>
-            </td>
-        `;
-        tbody.appendChild(row);
-    });
+    row.innerHTML = `
+        <td>${invoiceDate}</td>
+        <td>${invoice.invoiceId}</td>
+        <td>${invoice.customerName}</td>
+        <td>${CURRENCY_SYMBOL}${invoice.totalAmount.toFixed(2)}</td>
+        <td>${CURRENCY_SYMBOL}${invoice.paidAmount.toFixed(2)}</td>
+        <td style="color: ${remainingColor}; font-weight: bold;">${CURRENCY_SYMBOL}${invoice.remainingBalance.toFixed(2)}</td>
+        <td><span class="${statusClass}">${invoice.status}</span></td>
+        <td>
+            <button class="btn btn-sm btn-info" onclick="openPaymentModal('${invoice.invoiceId}')" ${isFullyPaid ? 'disabled' : ''}>Add Payment</button>
+            <button class="btn btn-sm btn-secondary" onclick="openViewPaymentsModal('${invoice.invoiceId}')">View Payments</button> 
+            <button class="btn btn-sm btn-warning" onclick="editSaleInvoice('${invoice.invoiceId}')">Edit</button>
+            <button class="btn btn-sm btn-primary" onclick="generateInvoicePDF('${invoice.invoiceId}')">PDF</button>
+            <button class="btn btn-sm btn-danger" onclick="initiateSellReturn('${invoice.invoiceId}')">Return</button>
+        </td>
+    `;
+    tbody.appendChild(row);
+});
 }
 
 function openPaymentModal(invoiceId) {
@@ -10191,35 +10194,86 @@ function deleteCashBookTransaction(id) {
 const CLOUD_FEE_EXPIRY_DATE = "2027-07-14T23:59:59";
 
 
-function checkCloudFeeStatus() {
-    const expiryDate = new Date(CLOUD_FEE_EXPIRY_DATE);
-    const now = getCloudDate(); // Real cloud time taake PC time change karne se cheat na ho sake
-    
-    const timeDiff = expiryDate - now;
-    const daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-    
-    const statusMsg = document.getElementById('trial-status-message');
-
-    // Agar date guzar chuki hai (Software Lock)
-    if (now > expiryDate) {
-        document.getElementById('auth-container').style.display = 'none';
-        document.getElementById('main-app').style.display = 'none';
-        document.getElementById('lock-screen').style.display = 'flex';
-        return false; // Lock lag gaya
-    } 
-    // Agar time baqi hai (Show remaining Months / Days)
-    else {
-        if (statusMsg) {
-            if (daysRemaining > 30) {
-                // Agar 30 din se zyada hain toh mahine (months) show karega
-                const monthsRemaining = Math.floor(daysRemaining / 30);
-                statusMsg.innerHTML = `☁️ <span style="color:#14b8a6; font-weight:bold;">Cloud Active: ${monthsRemaining} Month(s) left</span>`;
-            } else {
-                // Agar 30 din ya us se kam reh gaye hain toh din (days) show karega red color mein
-                statusMsg.innerHTML = `⚠️ <span style="color:#ef4444; font-weight:bold;">Cloud Fee Due in ${daysRemaining} Day(s)!</span>`;
+async function checkCloudFeeStatus() {
+    try {
+        let currentUserId = loggedInUser ? (loggedInUser.id || loggedInUser.uid) : null;
+        
+        if (!currentUserId) {
+            const activeSession = sessionStorage.getItem('active_user_session');
+            if (activeSession) {
+                const parsedUser = JSON.parse(activeSession);
+                currentUserId = parsedUser.id || parsedUser.uid;
             }
         }
-        return true; // Software chalne do
+
+        if (!currentUserId) {
+            triggerLockScreen("Aapka session khatam ho chuka hai ya unauthorized access hai.");
+            return false;
+        }
+
+        const userDoc = await db.collection('users').doc(currentUserId).get();
+        
+        if (!userDoc.exists) {
+            triggerLockScreen("Aapka user account database mein nahi mila.");
+            return false;
+        }
+        
+        const userData = userDoc.data();
+        
+        // (Yahan se admin ka alag rule mukammal hata diya gaya hai taake sabke liye ek jaisa check chale)
+
+        if (!userData.approved_until) {
+            triggerLockScreen("Aapke account ki subscription approve nahi ki gayi.");
+            return false;
+        }
+
+        const expiryDate = new Date(userData.approved_until);
+        const now = getCloudDate(); 
+        const timeDiff = expiryDate - now;
+        const daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+        
+        const statusMsg = document.getElementById('trial-status-message');
+
+        if (now > expiryDate) {
+            triggerLockScreen("Aapki cloud subscription ki miad khatam ho chuki hai. Meharbani karke fee ada karein.");
+            return false; 
+        } 
+        else {
+            if (statusMsg) {
+                if (daysRemaining > 30) {
+                    const monthsRemaining = Math.floor(daysRemaining / 30);
+                    statusMsg.innerHTML = `☁️ <span style="color:#14b8a6; font-weight:bold;">Cloud Active: ${monthsRemaining} Month(s) left</span>`;
+                } else {
+                    statusMsg.innerHTML = `⚠️ <span style="color:#ef4444; font-weight:bold;">Cloud Fee Due in ${daysRemaining} Day(s)!</span>`;
+                }
+            }
+            return true; 
+        }
+    } catch (e) {
+        console.error("Cloud fee security check error:", e);
+        triggerLockScreen("Network Error: Cloud subscription verify nahi ho saki.");
+        return false; 
+    }
+}
+
+// Helper function jo mukammal taur par software ko lock kar deta hai aur session saaf kar deta hai
+function triggerLockScreen(reason) {
+    sessionStorage.removeItem('active_user_session');
+    loggedInUser = null;
+    
+    // UI elements ko chupa dein taake data nazar na aaye
+    const authContainer = document.getElementById('auth-container');
+    const mainApp = document.getElementById('main-app');
+    const lockScreen = document.getElementById('lock-screen');
+    
+    if (authContainer) authContainer.style.display = 'none';
+    if (mainApp) mainApp.style.display = 'none';
+    
+    if (lockScreen) {
+        lockScreen.style.display = 'flex';
+        // Agar aap chahte hain ke reason bhi lock screen par dikhe toh yeh line chala sakte hain:
+        const subText = lockScreen.querySelector('h2');
+        if (subText) subText.textContent = reason;
     }
 }
 
