@@ -4064,7 +4064,7 @@ function renderPartialInvoiceCart() {
 }
 
 async function addPartialPaymentInvoice() {
-    if (isCreatingInvoice) return; // Dobara click hone se lock karega
+    if (isCreatingInvoice) return;
 
     if (editingInvoiceId) {
         saveSaleInvoiceChanges();
@@ -4112,7 +4112,10 @@ async function addPartialPaymentInvoice() {
     }
 
     try {
-        // Database mein mojood sab se bara invoice number dhoond kar +1 karega (Duplicate ID khatam)
+        // --- STEP 1: FETCH LATEST INVOICES FROM FIREBASE BEFORE CALCULATING ID ---
+        await dbFetchInvoices();
+
+        // Find the absolute highest existing numeric ID in the database
         const highestExistingId = partialPaymentInvoices.reduce((max, inv) => {
             const num = parseInt(inv.invoiceId, 10);
             return !isNaN(num) && num > max ? num : max;
@@ -4121,10 +4124,11 @@ async function addPartialPaymentInvoice() {
         const configuredStart = parseInt(appSettings.nextInvoiceNumber, 10) || 100;
         const newInvoiceId = Math.max(configuredStart, highestExistingId + 1);
 
+        // Advance settings for the next run
         appSettings.nextInvoiceNumber = newInvoiceId + 1;
         await saveSettings(); 
 
-        // Stock minus karein
+        // Update product stock
         partialInvoiceCart.forEach(cartItem => {
             const product = products.find(p => p.id === cartItem.id);
             if (product) {
@@ -4179,7 +4183,7 @@ async function addPartialPaymentInvoice() {
         }
     } catch (err) {
         console.error("Invoice Error:", err);
-        alert("Invoice create karne mein masla pesh aya: " + err.message);
+        alert("Error creating invoice: " + err.message);
     } finally {
         isCreatingInvoice = false;
         if (createBtn) {
@@ -4858,7 +4862,8 @@ function findInvoiceForReturn() {
     }
 
     const foundInvoice = partialPaymentInvoices.find(inv => 
-        String(inv.invoiceId) === searchQuery
+        String(inv.invoiceId).toLowerCase() === searchQuery ||
+        (inv.customerPhone && String(inv.customerPhone).toLowerCase().includes(searchQuery))
     );
 
     if (foundInvoice) {
@@ -6070,6 +6075,21 @@ function recordPurchase() {
         alert("Please select a purchase date.");
         return;
     }
+
+    // =========================================================================
+    // YAHAN YEH NAYA DUPLICATE BILL CHECK SHAMIL KIYA GAYA HAI:
+    // =========================================================================
+    const isDuplicateBill = purchaseLog.some(log => 
+        log.purchaserId === purchaserId && 
+        String(log.billNo).trim().toLowerCase() === billNo.toLowerCase() &&
+        log.id !== editingPurchaseLogId
+    );
+
+    if (isDuplicateBill) {
+        alert(`Ghalti: Is Supplier ke liye Bill Number "${billNo}" pehle se system mein darj hai. Meharbani karke bill number dobara check karein.`);
+        return; // Yeh invoice ko duplicate save hone se rok dega
+    }
+    // =========================================================================
 
     purchaseCart.forEach(item => {
         const productToUpdate = products.find(p => p.id === item.productId);
@@ -8326,11 +8346,26 @@ async function saveAppSettings() {
     appSettings.taxPercent = parseFloat(document.getElementById('setting-tax-percent').value) || 0;
     appSettings.enableDiscount = document.getElementById('setting-enable-discount').checked;
     appSettings.enableTax = document.getElementById('setting-enable-tax').checked;
-    appSettings.nextInvoiceNumber = parseInt(document.getElementById('setting-invoice-start-number').value) || 100;
 
-    await saveSettings(); // Settings save hone tak wait karega
+    // --- DUPLICATE INVOICE NUMBER VALIDATION ---
+    await dbFetchInvoices();
+    const highestExistingId = partialPaymentInvoices.reduce((max, inv) => {
+        const num = parseInt(inv.invoiceId, 10);
+        return !isNaN(num) && num > max ? num : max;
+    }, 0);
+
+    let requestedNextInvoice = parseInt(document.getElementById('setting-invoice-start-number').value, 10) || 100;
+    if (requestedNextInvoice <= highestExistingId) {
+        alert(`Warning: The highest existing invoice number is #${highestExistingId}. The next invoice number has been adjusted to #${highestExistingId + 1} to prevent duplicate invoices.`);
+        requestedNextInvoice = highestExistingId + 1;
+        document.getElementById('setting-invoice-start-number').value = requestedNextInvoice;
+    }
+
+    appSettings.nextInvoiceNumber = requestedNextInvoice;
+
+    await saveSettings();
     alert("Settings saved successfully!");
-    populateSettingsForm(); // Form me naya data wapas load karega
+    populateSettingsForm();
     refreshAll(); 
 }
 
@@ -9131,12 +9166,9 @@ async function initializeApp() {
     // 2. Direct online settings load karein
     await loadUserSettingsOnline();
 
-    // ==========================================
-    // YAHAN NAYA CHECK ADD KIYA GAYA HAI
-    // ==========================================
-    const isSoftwareActive = checkCloudFeeStatus();
-    if (!isSoftwareActive) return; // Agar time khatam ho gaya to code aage nahi chalega, lock screen aa jayegi.
-    // ==========================================
+    // Sahi Code:
+const isSoftwareActive = await checkCloudFeeStatus();
+if (!isSoftwareActive) return;
 
     // 3. Admin permissions set karein
     if (!appSettings.permissions) {
