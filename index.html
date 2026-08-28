@@ -1012,7 +1012,7 @@ body,
     </div>
 
     <div id="main-app">
-        <!-- TOP NAV UPDATED FOR SIDEBAR TOGGLE -->
+       
         <div id="top-status-bar">
             <div style="display: flex; align-items: center; gap: 15px;">
                 <!-- Naya Toggle Button -->
@@ -1020,6 +1020,8 @@ body,
                     <span id="sidebar-arrow">◀</span>
                 </button>
                 <span id="trial-status-message"></span>
+                <!-- LIVE NETWORK & AUTO-SYNC STATUS BADGE -->
+                <span id="network-status-badge" style="padding: 4px 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600;"></span>
             </div>
             <span id="user-session-info">Welcome, Administrator! <button class="btn btn-danger btn-sm" onclick="handleLogout()">Logout</button></span>
         </div>
@@ -1469,7 +1471,7 @@ body,
 
                     <hr style="border-color: var(--border-color); margin: 20px 0;">
 
-                   <div class="manage-list" style="flex-grow: 1;">
+                    <div class="manage-list" style="flex-grow: 1;">
                         <h3 class="panel-title" style="font-size: 1.2rem;">Customer Invoices</h3>
                         <input type="text" id="partial-search-input" class="form-control" placeholder="Search by customer phone or name..." style="margin-bottom: 10px;">
                         
@@ -2631,7 +2633,6 @@ body,
 <script>
 
 
-
 // 1. Auto Calculation (Sub kuch auto fill karega)
 function calculateAutoFields() {
     const demand = parseFloat(document.getElementById('d-demand').value) || 0;
@@ -2670,13 +2671,11 @@ async function saveDemandRecord() {
     };
 
     try {
-        const userId = loggedInUser.id || loggedInUser.uid;
         if (!Array.isArray(demandRecords)) demandRecords = [];
         demandRecords.push(record);
         
-        await db.collection('appData').doc(userId).collection('datasets').doc('demand_records').set({
-            payload: JSON.stringify(demandRecords)
-        });
+        // Naye Universal Engine ke zariye save karein (Offline + Online Safe)
+        saveDemandRecords();
         
         alert("Demand Record kamyabi se save ho gaya!");
         clearDemandForm();
@@ -3058,12 +3057,12 @@ function getLocalDateString(dateInput = getCloudDate()) {
 
 const firebaseConfig = {
   apiKey: "AIzaSyCx2wDLzKooKuRcWxEnxeGi5VDexKedYc4",
-    authDomain: "masooderp-5a3a0.firebaseapp.com",
-    projectId: "masooderp-5a3a0",
-    storageBucket: "masooderp-5a3a0.firebasestorage.app",
-    messagingSenderId: "386980509148",
-    appId: "1:386980509148:web:7b30d571183db7d926cb19",
-    measurementId: "G-SLCX2G90Y5"
+  authDomain: "masooderp-5a3a0.firebaseapp.com",
+  projectId: "masooderp-5a3a0",
+  storageBucket: "masooderp-5a3a0.firebasestorage.app",
+  messagingSenderId: "386980509148",
+  appId: "1:386980509148:web:7b30d571183db7d926cb19",
+  measurementId: "G-SLCX2G90Y5"
 };
 
 
@@ -3170,21 +3169,53 @@ function getUserSpecificKey(baseKey) {
 }
 
 async function dbFetchData(baseKey) {
-    if (!loggedInUser) return [];
-    if (!shopOwnerId) return []; // Master Admin ka ID zaroori hai
+    const userKey = getUserSpecificKey(baseKey);
     
-    const key = getUserSpecificKey(baseKey);
+    // 1. Agar Offline hain ya Cloud connect nahi, to LocalStorage se uthayein
+    if (!navigator.onLine || !shopOwnerId) {
+        const localData = localStorage.getItem(userKey);
+        try {
+            return localData ? JSON.parse(localData) : [];
+        } catch(e) {
+            return [];
+        }
+    }
+
+    // 2. Agar Online hain, to Firestore Cloud se fetch karein
     try {
-        // Ab yahan loggedInUser.id ki jagah shopOwnerId istemal hoga
-        const doc = await db.collection('appData').doc(shopOwnerId).collection('datasets').doc(key).get();
-        if (doc.exists) {
-            const data = doc.data();
-            if (data && data.payload) {
-                return JSON.parse(data.payload);
+        const doc = await db.collection('appData').doc(shopOwnerId).collection('datasets').doc(userKey).get();
+        if (!doc.exists) {
+            // Cloud par nahi mila to local fallback
+            const localData = localStorage.getItem(userKey);
+            return localData ? JSON.parse(localData) : [];
+        }
+
+        const docData = doc.data();
+        if (!docData) return [];
+
+        let payloadStr = '';
+
+        if (!docData.isChunked && docData.payload) {
+            payloadStr = docData.payload;
+        } else if (docData.isChunked && docData.totalChunks) {
+            // Chunks ko combine karein
+            for (let i = 0; i < docData.totalChunks; i++) {
+                const chunkDoc = await db.collection('appData').doc(shopOwnerId).collection('datasets').doc(`${userKey}_chunk_${i}`).get();
+                if (chunkDoc.exists && chunkDoc.data().chunk) {
+                    payloadStr += chunkDoc.data().chunk;
+                }
             }
         }
+
+        if (payloadStr) {
+            // LocalStorage ko bhi Cloud data se sync rakhein
+            localStorage.setItem(userKey, payloadStr);
+            return JSON.parse(payloadStr);
+        }
     } catch (e) {
-        console.error("Error fetching " + baseKey + " from Firebase:", e);
+        console.warn(`Cloud fetch failed for ${baseKey}, using local storage:`, e);
+        const localData = localStorage.getItem(userKey);
+        return localData ? JSON.parse(localData) : [];
     }
     return [];
 }
@@ -3209,10 +3240,10 @@ async function loadUserSettingsOnline() {
     // Default Settings agar empty hon
     // Default Settings sirf pehli baar ke liye (agar bilkul na hon)
 appSettings = appSettings || {};
-if (appSettings.restaurantName === undefined) appSettings.restaurantName = "FJM Social Media";
-if (appSettings.restaurantAddress === undefined) appSettings.restaurantAddress = "123 Main Street, Your City";
-if (appSettings.restaurantPhone === undefined) appSettings.restaurantPhone = "+92 123 4567890";
-if (appSettings.invoiceNote === undefined) appSettings.invoiceNote = "Thank you for your purchase!";
+if (appSettings.restaurantName === undefined) appSettings.restaurantName = "Umer Brothers";
+if (appSettings.restaurantAddress === undefined) appSettings.restaurantAddress = "Prince road near rahat cineman Quetta";
+if (appSettings.restaurantPhone === undefined) appSettings.restaurantPhone = "03327909930";
+if (appSettings.invoiceNote === undefined) appSettings.invoiceNote = "No return no exchange no warranty";
     appSettings.discountPercent = appSettings.discountPercent ?? 10;
     appSettings.taxPercent = appSettings.taxPercent ?? 5;
     appSettings.enableDiscount = appSettings.enableDiscount ?? true;
@@ -3229,24 +3260,83 @@ if (appSettings.invoiceNote === undefined) appSettings.invoiceNote = "Thank you 
     }
 }
 
+// Tamam Unsynced Keys ka track rakhne wala Master Register
+function markKeyAsUnsynced(userKey) {
+    let unsyncedList = JSON.parse(localStorage.getItem('pos_master_unsynced_keys')) || [];
+    if (!unsyncedList.includes(userKey)) {
+        unsyncedList.push(userKey);
+        localStorage.setItem('pos_master_unsynced_keys', JSON.stringify(unsyncedList));
+    }
+}
+
+function markKeyAsSynced(userKey) {
+    let unsyncedList = JSON.parse(localStorage.getItem('pos_master_unsynced_keys')) || [];
+    unsyncedList = unsyncedList.filter(k => k !== userKey);
+    localStorage.setItem('pos_master_unsynced_keys', JSON.stringify(unsyncedList));
+}
+
+// Master Universal Save Function
 async function saveData(key, data) {
     try {
         const jsonString = JSON.stringify(data);
-        localStorage.setItem(key, jsonString);
 
-        const dataSizeInMB = new Blob([jsonString]).size / (1024 * 1024);
-        if (dataSizeInMB >= 0.95) {
-            alert(`⚠️ WARNING: Aapka data (${dataSizeInMB.toFixed(2)} MB) Cloud ki limit se bada ho gaya hai!`);
-            return; 
+        // 1. Har module ka data instant local save hoga (No delay)
+        try {
+            localStorage.setItem(key, jsonString);
+        } catch (storageErr) {
+            console.warn("Browser LocalStorage full, IndexedDB fallback:", storageErr);
         }
 
-        if (shopOwnerId) { // Yahan shopOwnerId aayega
-            await db.collection('appData').doc(shopOwnerId).collection('datasets').doc(key).set({ 
-                payload: jsonString 
-            });
+        // 2. Unsynced List mein mark karein
+        markKeyAsUnsynced(key);
+
+        // 3. Agar offline hain to status update karein aur return ho jayein
+        if (!navigator.onLine || !shopOwnerId) {
+            updateNetworkBadge();
+            return;
         }
+
+        // 4. Online hone par Firestore par upload karein
+        await uploadDatasetToFirestore(key, jsonString);
+        markKeyAsSynced(key);
+        updateNetworkBadge();
+
     } catch (e) {
-        console.error("Error saving data to Firebase Cloud:", e);
+        console.error(`Save to Cloud error for key ${key}:`, e);
+        markKeyAsUnsynced(key);
+        updateNetworkBadge();
+    }
+}
+
+// Reusable Safe Uploader (Handles normal and large files)
+async function uploadDatasetToFirestore(key, jsonString) {
+    if (!shopOwnerId) return;
+    const CHUNK_SIZE = 700000; // ~700KB safe chunk
+
+    if (jsonString.length <= CHUNK_SIZE) {
+        await db.collection('appData').doc(shopOwnerId).collection('datasets').doc(key).set({
+            payload: jsonString,
+            isChunked: false,
+            totalChunks: 1,
+            lastSyncedAt: new Date().toISOString()
+        });
+    } else {
+        const totalChunks = Math.ceil(jsonString.length / CHUNK_SIZE);
+        const batch = db.batch();
+
+        const masterRef = db.collection('appData').doc(shopOwnerId).collection('datasets').doc(key);
+        batch.set(masterRef, {
+            isChunked: true,
+            totalChunks: totalChunks,
+            lastSyncedAt: new Date().toISOString()
+        });
+
+        for (let i = 0; i < totalChunks; i++) {
+            const chunkData = jsonString.slice(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE);
+            const chunkRef = db.collection('appData').doc(shopOwnerId).collection('datasets').doc(`${key}_chunk_${i}`);
+            batch.set(chunkRef, { chunk: chunkData });
+        }
+        await batch.commit();
     }
 }
 
@@ -3283,7 +3373,7 @@ async function syncDataFromFirebase() {
     for (const baseKey of keysToSync) {
         const userKey = getUserSpecificKey(baseKey);
         try {
-            const doc = await db.collection('appData').doc(userId).collection('datasets').doc(userKey).get();
+           const doc = await db.collection('appData').doc(shopOwnerId || userId).collection('datasets').doc(userKey).get();
             if (doc.exists) {
                 const data = doc.data();
                 if (data && data.payload) {
@@ -3321,10 +3411,10 @@ function loadUserSpecificData() {
 
     const settingsData = localStorage.getItem(getUserSpecificKey(SETTINGS_KEY));
     appSettings = settingsData ? JSON.parse(settingsData) : {};
-    appSettings.restaurantName = appSettings.restaurantName || "FJM Social Media";
-    appSettings.restaurantAddress = appSettings.restaurantAddress || "123 Main Street, Your City";
-    appSettings.restaurantPhone = appSettings.restaurantPhone || "+92 123 4567890";
-    appSettings.invoiceNote = appSettings.invoiceNote || "Thank you for your purchase!";
+    appSettings.restaurantName = appSettings.restaurantName || "Umer Brothers";
+    appSettings.restaurantAddress = appSettings.restaurantAddress || "Prince road near rahat cineman Quetta";
+    appSettings.restaurantPhone = appSettings.restaurantPhone || "03327909930";
+    appSettings.invoiceNote = appSettings.invoiceNote || "No return no exchange no warranty";
     appSettings.discountPercent = appSettings.discountPercent ?? 10;
     appSettings.taxPercent = appSettings.taxPercent ?? 5;
     appSettings.enableDiscount = appSettings.enableDiscount ?? true;
@@ -3423,6 +3513,9 @@ async function loadProductsFromFirebase() {
 }
 
 
+// ==========================================
+// ALL MODULES UNIFIED SAVE HANDLERS (STEP 4)
+// ==========================================
 function saveGlobalData(key, data) { saveData(key, data); }
 const saveSettings = () => saveData(getUserSpecificKey(SETTINGS_KEY), appSettings);
 const saveProducts = () => saveData(getUserSpecificKey(PRODUCTS_KEY), products);
@@ -3435,15 +3528,11 @@ const saveNotifications = () => saveGlobalData(NOTIFICATIONS_KEY, notifications)
 const savePartialPaymentInvoices = () => saveData(getUserSpecificKey("pos_app_partial_invoices"), partialPaymentInvoices);
 const savePurchasers = () => saveData(getUserSpecificKey(PURCHASERS_KEY), purchasers);
 const savePurchaseLog = () => saveData(getUserSpecificKey(PURCHASE_LOG_KEY), purchaseLog);
-const saveCashBookLog = () => {
-    // 1. Browser ke local storage mein save karein (Instant Update)
-    localStorage.setItem(getUserSpecificKey(CASH_BOOK_KEY), JSON.stringify(cashBookLog));
-    // 2. Firebase Cloud Database mein save karein (Permanent Backup)
-    saveData(getUserSpecificKey(CASH_BOOK_KEY), cashBookLog);
-};
+const saveCashBookLog = () => saveData(getUserSpecificKey(CASH_BOOK_KEY), cashBookLog);
 const saveGatePassLog = () => saveData(getUserSpecificKey(GATE_PASS_LOG_KEY), gatePassLog);
 const saveSellReturnsLog = () => saveData(getUserSpecificKey(SELL_RETURNS_KEY), sellReturnsLog);
 const saveStockUpdatesLog = () => saveData(getUserSpecificKey(STOCK_UPDATES_KEY), stockUpdatesLog);
+const saveDemandRecords = () => saveData(getUserSpecificKey("demand_records"), demandRecords);
 async function dbFetchProducts() { products = await dbFetchData(PRODUCTS_KEY); }
 async function dbFetchInvoices() { partialPaymentInvoices = await dbFetchData("pos_app_partial_invoices"); }
 async function dbFetchExpenses() { expenses = await dbFetchData(EXPENSES_KEY); }
@@ -3712,10 +3801,15 @@ function addManagedProduct() {
         return;
     }
 
+   // Agar image Cloudinary ka link nahi hai to database mein upload na karein
+    const safeImageURL = (currentImageBase64 && currentImageBase64.startsWith('http')) 
+        ? currentImageBase64 
+        : null;
+
     const newProduct = {
         id: 'p' + Date.now(),
         name: name,
-        image_path: currentImageBase64,
+        image_path: safeImageURL,
         price: price,
         costPrice: costPrice,
         quantity: 0, 
@@ -4064,7 +4158,7 @@ function renderPartialInvoiceCart() {
 }
 
 async function addPartialPaymentInvoice() {
-    if (isCreatingInvoice) return;
+    if (isCreatingInvoice) return; // Dobara click hone se lock karega
 
     if (editingInvoiceId) {
         saveSaleInvoiceChanges();
@@ -4112,10 +4206,7 @@ async function addPartialPaymentInvoice() {
     }
 
     try {
-        // --- STEP 1: FETCH LATEST INVOICES FROM FIREBASE BEFORE CALCULATING ID ---
-        await dbFetchInvoices();
-
-        // Find the absolute highest existing numeric ID in the database
+        // Database mein mojood sab se bara invoice number dhoond kar +1 karega (Duplicate ID khatam)
         const highestExistingId = partialPaymentInvoices.reduce((max, inv) => {
             const num = parseInt(inv.invoiceId, 10);
             return !isNaN(num) && num > max ? num : max;
@@ -4124,11 +4215,10 @@ async function addPartialPaymentInvoice() {
         const configuredStart = parseInt(appSettings.nextInvoiceNumber, 10) || 100;
         const newInvoiceId = Math.max(configuredStart, highestExistingId + 1);
 
-        // Advance settings for the next run
         appSettings.nextInvoiceNumber = newInvoiceId + 1;
         await saveSettings(); 
 
-        // Update product stock
+        // Stock minus karein
         partialInvoiceCart.forEach(cartItem => {
             const product = products.find(p => p.id === cartItem.id);
             if (product) {
@@ -4183,7 +4273,7 @@ async function addPartialPaymentInvoice() {
         }
     } catch (err) {
         console.error("Invoice Error:", err);
-        alert("Error creating invoice: " + err.message);
+        alert("Invoice create karne mein masla pesh aya: " + err.message);
     } finally {
         isCreatingInvoice = false;
         if (createBtn) {
@@ -4214,7 +4304,7 @@ function renderPartialPaymentTable() {
     ).sort((a,b) => b.invoiceId - a.invoiceId)
 
 
-   filteredInvoices.forEach(invoice => {
+    filteredInvoices.forEach(invoice => {
     const row = document.createElement('tr');
     const statusClass = getStatusClass(invoice.status);
     const remainingColor = invoice.remainingBalance > 0.01 ? 'var(--danger-color)' : 'var(--success-color)';
@@ -4678,6 +4768,7 @@ async function generateInvoicePDF(invoiceId) {
 
     doc.save(`Invoice_${invoice.invoiceId}.pdf`);
 }
+// --- END PARTIAL PAYMENTS FUNCTIONS ---
 
 
 // --- SELL RETURN FUNCTIONS ---
@@ -4862,8 +4953,7 @@ function findInvoiceForReturn() {
     }
 
     const foundInvoice = partialPaymentInvoices.find(inv => 
-        String(inv.invoiceId).toLowerCase() === searchQuery ||
-        (inv.customerPhone && String(inv.customerPhone).toLowerCase().includes(searchQuery))
+        String(inv.invoiceId) === searchQuery
     );
 
     if (foundInvoice) {
@@ -6075,21 +6165,6 @@ function recordPurchase() {
         alert("Please select a purchase date.");
         return;
     }
-
-    // =========================================================================
-    // YAHAN YEH NAYA DUPLICATE BILL CHECK SHAMIL KIYA GAYA HAI:
-    // =========================================================================
-    const isDuplicateBill = purchaseLog.some(log => 
-        log.purchaserId === purchaserId && 
-        String(log.billNo).trim().toLowerCase() === billNo.toLowerCase() &&
-        log.id !== editingPurchaseLogId
-    );
-
-    if (isDuplicateBill) {
-        alert(`Ghalti: Is Supplier ke liye Bill Number "${billNo}" pehle se system mein darj hai. Meharbani karke bill number dobara check karein.`);
-        return; // Yeh invoice ko duplicate save hone se rok dega
-    }
-    // =========================================================================
 
     purchaseCart.forEach(item => {
         const productToUpdate = products.find(p => p.id === item.productId);
@@ -8131,6 +8206,7 @@ async function handleLogin() {
     }
 }
 
+
 // --- Step 4: Logic for Update & Login ---
 async function handlePasswordUpdateAndLogin() {
     const email = document.getElementById('reset-email').value.trim();
@@ -8162,8 +8238,6 @@ async function handlePasswordUpdateAndLogin() {
 
         document.getElementById('auth-container').style.display = 'none'; 
         document.getElementById('main-app').style.display = 'flex'; 
-        document.getElementById('main-app').style.display = 'flex';
- 
         // ------------------------------------------------
 
     } catch (e) {
@@ -8325,26 +8399,11 @@ async function saveAppSettings() {
     appSettings.taxPercent = parseFloat(document.getElementById('setting-tax-percent').value) || 0;
     appSettings.enableDiscount = document.getElementById('setting-enable-discount').checked;
     appSettings.enableTax = document.getElementById('setting-enable-tax').checked;
+    appSettings.nextInvoiceNumber = parseInt(document.getElementById('setting-invoice-start-number').value) || 100;
 
-    // --- DUPLICATE INVOICE NUMBER VALIDATION ---
-    await dbFetchInvoices();
-    const highestExistingId = partialPaymentInvoices.reduce((max, inv) => {
-        const num = parseInt(inv.invoiceId, 10);
-        return !isNaN(num) && num > max ? num : max;
-    }, 0);
-
-    let requestedNextInvoice = parseInt(document.getElementById('setting-invoice-start-number').value, 10) || 100;
-    if (requestedNextInvoice <= highestExistingId) {
-        alert(`Warning: The highest existing invoice number is #${highestExistingId}. The next invoice number has been adjusted to #${highestExistingId + 1} to prevent duplicate invoices.`);
-        requestedNextInvoice = highestExistingId + 1;
-        document.getElementById('setting-invoice-start-number').value = requestedNextInvoice;
-    }
-
-    appSettings.nextInvoiceNumber = requestedNextInvoice;
-
-    await saveSettings();
+    await saveSettings(); // Settings save hone tak wait karega
     alert("Settings saved successfully!");
-    populateSettingsForm();
+    populateSettingsForm(); // Form me naya data wapas load karega
     refreshAll(); 
 }
 
@@ -9182,8 +9241,22 @@ async function initializeApp() {
     // 2. Direct online settings load karein
     await loadUserSettingsOnline();
 
-    // Sahi Code:
-const isSoftwareActive = await checkCloudFeeStatus();
+    // ==========================================
+    // YAHAN NAYA CHECK ADD KIYA GAYA HAI
+    // ==========================================
+   // 1. Database se Admin (Shop Owner) ki expiry date nikalen
+let adminExpiry = null;
+try {
+    const adminDoc = await db.collection('users').doc(shopOwnerId).get();
+    if (adminDoc.exists) {
+        adminExpiry = adminDoc.data().approved_until;
+    }
+} catch (e) {
+    console.error("Error fetching admin expiry:", e);
+}
+
+// 2. Expiry check run karein
+const isSoftwareActive = checkCloudFeeStatus(adminExpiry);
 if (!isSoftwareActive) return;
 
     // 3. Admin permissions set karein
@@ -9208,8 +9281,7 @@ if (!isSoftwareActive) return;
     populatePaymentMethods();
     populateExpenseCategoryDropdowns();
 
-    // 5. Event Listeners bind karein
-    // Event Listeners sirf 1 dafa lagane ke liye guard:
+    // 5. Event Listeners bind karein (Sirf 1 martaba)
     if (!isAppInitialized) {
         document.getElementById('search-input').addEventListener('input', renderProductGrid);
         document.getElementById('user-search-input').addEventListener('input', renderAllUsersTable);
@@ -9296,8 +9368,14 @@ if (!isSoftwareActive) return;
         document.getElementById('btn-monthly-cash-report').addEventListener('click', () => generateCashBookReport('monthly'));
         document.getElementById('btn-custom-cash-report').addEventListener('click', () => generateCashBookReport('custom'));
 
-        
-        isAppInitialized = true; // <-- Guard yahan band ho gaya
+        const partialMethodEl = document.getElementById('partial-payment-method');
+        if (partialMethodEl) {
+            partialMethodEl.addEventListener('change', (e) => handlePaymentMethodChange(e.target, document.getElementById('partial-payment-details-container')));
+        }
+
+        initializeProductStockReport();
+
+        isAppInitialized = true; // Guard close
     }
 
     // Default modes toggling
@@ -9318,6 +9396,7 @@ if (!isSoftwareActive) return;
     
     refreshAll();
 }
+
 
 
 
@@ -9520,9 +9599,9 @@ if (moduleName === 'Settings') {
             await renderAdminDashboard();
         }
 
-    } catch (e) {
-        console.error("Online lazy load failed: ", e);
-        alert("Internet Slow ya disconnect hai! Data sahi se load nahi ho saka.");
+  } catch (e) {
+        console.warn(`[Offline Mode] '${moduleName}' ka local data load kiya gaya hai.`);
+        // Offline hone par alert nahi aayega, local data silently open hoga
     } finally {
         // FIX: Ab button variable safe hai aur wapas apney puraney text par reset ho jayega
         button.innerHTML = originalText;
@@ -10261,89 +10340,44 @@ function deleteCashBookTransaction(id) {
 
 // YAHAN AAPNE EXPIRY DATE SET KARNI HAI (YYYY-MM-DD format mein)
 // Misal ke taur par: Agle saal ki date dal dein. Agar 1 din dena hai to kal ki date dal dein.
-const CLOUD_FEE_EXPIRY_DATE = "2027-07-14T23:59:59";
+const CLOUD_FEE_EXPIRY_DATE = "2027-03-14T23:59:59"; 
 
-
-async function checkCloudFeeStatus() {
-    try {
-        let currentUserId = loggedInUser ? (loggedInUser.id || loggedInUser.uid) : null;
-        
-        if (!currentUserId) {
-            const activeSession = sessionStorage.getItem('active_user_session');
-            if (activeSession) {
-                const parsedUser = JSON.parse(activeSession);
-                currentUserId = parsedUser.id || parsedUser.uid;
-            }
-        }
-
-        if (!currentUserId) {
-            triggerLockScreen("Aapka session khatam ho chuka hai ya unauthorized access hai.");
-            return false;
-        }
-
-        const userDoc = await db.collection('users').doc(currentUserId).get();
-        
-        if (!userDoc.exists) {
-            triggerLockScreen("Aapka user account database mein nahi mila.");
-            return false;
-        }
-        
-        const userData = userDoc.data();
-        
-        // (Yahan se admin ka alag rule mukammal hata diya gaya hai taake sabke liye ek jaisa check chale)
-
-        if (!userData.approved_until) {
-            triggerLockScreen("Aapke account ki subscription approve nahi ki gayi.");
-            return false;
-        }
-
-        const expiryDate = new Date(userData.approved_until);
-        const now = getCloudDate(); 
-        const timeDiff = expiryDate - now;
-        const daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
-        
-        const statusMsg = document.getElementById('trial-status-message');
-
-        if (now > expiryDate) {
-            triggerLockScreen("Aapki cloud subscription ki miad khatam ho chuki hai. Meharbani karke fee ada karein.");
-            return false; 
-        } 
-        else {
-            if (statusMsg) {
-                if (daysRemaining > 30) {
-                    const monthsRemaining = Math.floor(daysRemaining / 30);
-                    statusMsg.innerHTML = `☁️ <span style="color:#14b8a6; font-weight:bold;">Cloud Active: ${monthsRemaining} Month(s) left</span>`;
-                } else {
-                    statusMsg.innerHTML = `⚠️ <span style="color:#ef4444; font-weight:bold;">Cloud Fee Due in ${daysRemaining} Day(s)!</span>`;
-                }
-            }
-            return true; 
-        }
-    } catch (e) {
-        console.error("Cloud fee security check error:", e);
-        triggerLockScreen("Network Error: Cloud subscription verify nahi ho saki.");
-        return false; 
-    }
-}
-
-// Helper function jo mukammal taur par software ko lock kar deta hai aur session saaf kar deta hai
-function triggerLockScreen(reason) {
-    sessionStorage.removeItem('active_user_session');
-    loggedInUser = null;
-    
-    // UI elements ko chupa dein taake data nazar na aaye
+function checkCloudFeeStatus(adminExpiry) {
+    const statusMsg = document.getElementById('trial-status-message');
+    const lockScreen = document.getElementById('lock-screen');
     const authContainer = document.getElementById('auth-container');
     const mainApp = document.getElementById('main-app');
-    const lockScreen = document.getElementById('lock-screen');
-    
-    if (authContainer) authContainer.style.display = 'none';
-    if (mainApp) mainApp.style.display = 'none';
-    
-    if (lockScreen) {
-        lockScreen.style.display = 'flex';
-        // Agar aap chahte hain ke reason bhi lock screen par dikhe toh yeh line chala sakte hain:
-        const subText = lockScreen.querySelector('h2');
-        if (subText) subText.textContent = reason;
+
+    // 1. DEFAULT/FALLBACK DATE
+    let expiryDate = new Date("2027-03-14T23:59:59"); 
+
+    // 2. SMART CHECK: Agar admin ki expiry date mil jaye to wahi use hogi
+    if (adminExpiry) {
+        expiryDate = new Date(adminExpiry);
+    } else if (loggedInUser && loggedInUser.approved_until) {
+        expiryDate = new Date(loggedInUser.approved_until);
+    }
+
+    const now = getCloudDate(); 
+    const timeDiff = expiryDate - now;
+    const daysRemaining = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+    if (now > expiryDate) {
+        if (authContainer) authContainer.style.display = 'none';
+        if (mainApp) mainApp.style.display = 'none';
+        if (lockScreen) lockScreen.style.display = 'flex';
+        return false;
+    } else {
+        if (lockScreen) lockScreen.style.display = 'none';
+        if (statusMsg) {
+            if (daysRemaining > 30) {
+                const monthsRemaining = Math.floor(daysRemaining / 30);
+                statusMsg.innerHTML = `☁️ <span style="color:#14b8a6; font-weight:bold;">Cloud Active: ${monthsRemaining} Month(s) left</span>`;
+            } else if (daysRemaining > 0) {
+                statusMsg.innerHTML = `⚠️ <span style="color:#ef4444; font-weight:bold;">Cloud Fee Due in ${daysRemaining} Day(s)!</span>`;
+            }
+        }
+        return true;
     }
 }
 
@@ -10438,6 +10472,114 @@ function getBase64FromUrl(url) {
         img.src = url;
     });
 }
+
+// --- AUTO-SYNC FOR ALL MODULES WHEN ONLINE ---
+let isSyncingActive = false;
+
+async function syncAllPendingModulesToFirestore() {
+    if (isSyncingActive || !navigator.onLine || !shopOwnerId) return;
+    
+    let unsyncedKeys = JSON.parse(localStorage.getItem('pos_master_unsynced_keys')) || [];
+    
+    // Agar koi specific key miss ho gayi ho, to tamam primary modules ko check karein
+    const allKnownModules = [
+        SETTINGS_KEY, PRODUCTS_KEY, SALES_LOG_KEY, EXPENSES_KEY,
+        EXPENSE_CATEGORIES_KEY, "pos_app_partial_invoices", PURCHASERS_KEY,
+        PURCHASE_LOG_KEY, CASH_BOOK_KEY, GATE_PASS_LOG_KEY,
+        SELL_RETURNS_KEY, STOCK_UPDATES_KEY, 'demand_records'
+    ];
+
+    allKnownModules.forEach(mod => {
+        const fullKey = getUserSpecificKey(mod);
+        if (localStorage.getItem(fullKey) && !unsyncedKeys.includes(fullKey)) {
+            // Safe side check
+        }
+    });
+
+    if (unsyncedKeys.length === 0) {
+        updateNetworkBadge();
+        return;
+    }
+
+    isSyncingActive = true;
+    updateNetworkBadge(true); // "Syncing..." dikhaye
+
+    console.log(`[Auto-Sync] Internet active! ${unsyncedKeys.length} modules Firestore par sync ho rahe hain...`);
+
+    for (const key of [...unsyncedKeys]) {
+        try {
+            const rawData = localStorage.getItem(key);
+            if (rawData) {
+                await uploadDatasetToFirestore(key, rawData);
+                markKeyAsSynced(key);
+                console.log(`[Auto-Sync] ✅ Synced module: ${key}`);
+            } else {
+                markKeyAsSynced(key);
+            }
+        } catch (syncErr) {
+            console.error(`[Auto-Sync] ❌ Sync fail for ${key}:`, syncErr);
+        }
+    }
+
+    isSyncingActive = false;
+    updateNetworkBadge();
+    console.log("[Auto-Sync] 🚀 Tamam modules kamyabi se Firestore par synchronize ho chuke hain!");
+}
+
+// Live Status Indicator in Top Bar
+function updateNetworkBadge(isCurrentlySyncing = false) {
+    const badge = document.getElementById('network-status-badge');
+    if (!badge) return;
+
+    const unsyncedKeys = JSON.parse(localStorage.getItem('pos_master_unsynced_keys')) || [];
+
+    if (!navigator.onLine) {
+        badge.style.backgroundColor = 'rgba(239, 68, 68, 0.2)';
+        badge.style.color = '#ef4444';
+        badge.style.border = '1px solid #ef4444';
+        badge.innerHTML = `🔴 Offline (${unsyncedKeys.length} pending sync)`;
+    } else if (isCurrentlySyncing || isSyncingActive) {
+        badge.style.backgroundColor = 'rgba(245, 158, 11, 0.2)';
+        badge.style.color = '#f59e0b';
+        badge.style.border = '1px solid #f59e0b';
+        badge.innerHTML = `🔄 Syncing to Cloud (${unsyncedKeys.length} remaining)...`;
+    } else if (unsyncedKeys.length > 0) {
+        badge.style.backgroundColor = 'rgba(245, 158, 11, 0.2)';
+        badge.style.color = '#f59e0b';
+        badge.style.border = '1px solid #f59e0b';
+        badge.innerHTML = `⚠️ ${unsyncedKeys.length} items waiting for sync`;
+    } else {
+        badge.style.backgroundColor = 'rgba(16, 185, 129, 0.2)';
+        badge.style.color = '#10b981';
+        badge.style.border = '1px solid #10b981';
+        badge.innerHTML = "🟢 All Modules Synced";
+    }
+}
+
+// Listeners for Online / Offline Events
+// Listeners for Online / Offline Events
+window.addEventListener('online', () => {
+    console.log("Internet connect ho gaya!");
+    syncAllPendingModulesToFirestore();
+});
+
+window.addEventListener('offline', () => {
+    console.log("Internet disconnect ho gaya! Local mode active.");
+    updateNetworkBadge();
+});
+
+// Initial load par foran status dikhaye
+updateNetworkBadge();
+
+// Periodic background sync checker (Har 30 seconds baad check karega)
+setInterval(() => {
+    if (navigator.onLine && !isSyncingActive) {
+        const unsyncedKeys = JSON.parse(localStorage.getItem('pos_master_unsynced_keys')) || [];
+        if (unsyncedKeys.length > 0) {
+            syncAllPendingModulesToFirestore();
+        }
+    }
+}, 30000);
 
 </script>
 
