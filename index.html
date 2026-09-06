@@ -3740,50 +3740,27 @@ document.getElementById('dashboard-total-sales').textContent = `${CURRENCY_SYMBO
 // --- END NEW DASHBOARD FUNCTIONS ---
 
 // --- MANAGE PRODUCTS FUNCTIONS (WITH AUTOMATIC COST PRICE) ---
-async function handleNewProductImageUpload(event) {
+function handleNewProductImageUpload(event) {
     const file = event.target.files[0];
     const preview = document.getElementById('new-product-preview');
     
     if (!file) {
         currentImageBase64 = null;
-        preview.src = '';
-        preview.style.display = 'none';
+        if (preview) {
+            preview.src = '';
+            preview.style.display = 'none';
+        }
         return;
     }
 
-    // --- CLOUDINARY SETTINGS ---
-    const cloudName = 'zwuinsyb';        // Aapka Cloud Name
-    const uploadPreset = 'fjm_images';   // Aapka Upload Preset
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', uploadPreset);
-
-    try {
-        // Upload hone tak loading GIF dikhayein
-        preview.style.display = 'block';
-        preview.src = 'https://i.gifer.com/ZKZg.gif'; 
-
-        // Cloudinary par image bhej rahe hain
-        const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-            method: 'POST',
-            body: formData
-        });
-
-        const data = await response.json();
-        
-        if (data.secure_url) {
-            currentImageBase64 = data.secure_url; // Link Firebase ke liye save ho gaya
-            preview.src = currentImageBase64;
-        } else {
-            alert("Image upload fail ho gayi: " + (data.error ? data.error.message : "Unknown error"));
-            preview.style.display = 'none';
+    // Image ko auto compress kar ke offline Base64 mein convert karein
+    compressAndResizeImage(file, 400, 400, 0.6, function(base64Data) {
+        currentImageBase64 = base64Data; // Offline local database ke liye image ready
+        if (preview) {
+            preview.src = base64Data;
+            preview.style.display = 'block';
         }
-    } catch (error) {
-        console.error("Cloudinary Upload Error:", error);
-        alert("Internet connection ya Cloudinary mein masla aaya!");
-        preview.style.display = 'none';
-    }
+    });
 }
 
 function addManagedProduct() {
@@ -3801,10 +3778,8 @@ function addManagedProduct() {
         return;
     }
 
-   // Agar image Cloudinary ka link nahi hai to database mein upload na karein
-    const safeImageURL = (currentImageBase64 && currentImageBase64.startsWith('http')) 
-        ? currentImageBase64 
-        : null;
+// Nayi line:
+const safeImageURL = currentImageBase64 || null;
 
     const newProduct = {
         id: 'p' + Date.now(),
@@ -8407,46 +8382,21 @@ async function saveAppSettings() {
     refreshAll(); 
 }
 
-async function handleLogoUpload(event) {
+function handleLogoUpload(event) {
     const file = event.target.files[0];
     const preview = document.getElementById('logo-preview');
     
     if (!file) {
         appSettings.logoBase64 = null;
-        preview.src = IMG_PLACEHOLDER;
+        if (preview) preview.src = IMG_PLACEHOLDER;
         return;
     }
 
-    // --- CLOUDINARY SETTINGS ---
-    const cloudName = 'zwuinsyb';        // Aapka Cloud Name
-    const uploadPreset = 'fjm_images';   // Aapka Upload Preset
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', uploadPreset);
-
-    try {
-        preview.src = 'https://i.gifer.com/ZKZg.gif'; // Loading GIF
-
-        const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, {
-            method: 'POST',
-            body: formData
-        });
-
-        const data = await response.json();
-        
-        if (data.secure_url) {
-            appSettings.logoBase64 = data.secure_url; // Link Firebase ke liye save ho gaya
-            preview.src = appSettings.logoBase64;
-        } else {
-            alert("Logo upload fail ho gaya.");
-            preview.src = IMG_PLACEHOLDER;
-        }
-    } catch (error) {
-        console.error("Cloudinary Upload Error:", error);
-        alert("Upload fail ho gaya!");
-        preview.src = IMG_PLACEHOLDER;
-    }
+    // Logo ko 250px par compress kar ke offline save karein
+    compressAndResizeImage(file, 250, 250, 0.7, function(base64Data) {
+        appSettings.logoBase64 = base64Data;
+        if (preview) preview.src = base64Data;
+    });
 }
 
 function saveAllDataToFile() {
@@ -10420,41 +10370,19 @@ function compressAndResizeImage(file, maxWidth, maxHeight, quality, callback) {
 }
 
 
-// Purani heavy Base64 images ko database se saaf karne ka function
 function sanitizeHeavyImages() {
-    let updated = false;
-    
-    // 1. Products mein se heavy base64 images saaf karein
-    if (Array.isArray(products)) {
-        products.forEach(p => {
-            if (p.image_path && p.image_path.startsWith('data:image')) {
-                p.image_path = null; // Base64 image ko delete kar ke link khali kar dein
-                updated = true;
-            }
-        });
-    }
-    
-    // 2. Settings Logo mein se bhi heavy base64 saaf karein (agar wahan bhi ho)
-    if (appSettings && appSettings.logoBase64 && appSettings.logoBase64.startsWith('data:image')) {
-        appSettings.logoBase64 = null;
-        updated = true;
-        saveSettings();
-    }
-
-    if (updated) {
-        saveProducts();
-        console.log("Database successfully cleaned from heavy Base64 images!");
-    }
+    // Images ko safe rakhne ke liye ise khali chora gaya hai
+    return;
 }
 
-// Online Image URL ko PDF ke liye prepare karne wala helper function
 function getBase64FromUrl(url) {
     return new Promise((resolve) => {
         if (!url) return resolve(null);
+        // Agar pehle se offline Base64 hai to direct return karein
         if (url.startsWith('data:image')) return resolve(url);
 
         const img = new Image();
-        img.crossOrigin = 'Anonymous'; // CORS Handle karne ke liye
+        img.crossOrigin = 'Anonymous';
         img.onload = () => {
             const canvas = document.createElement('canvas');
             canvas.width = img.width;
@@ -10462,8 +10390,7 @@ function getBase64FromUrl(url) {
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0);
             try {
-                const dataURL = canvas.toDataURL('image/jpeg', 0.8);
-                resolve(dataURL);
+                resolve(canvas.toDataURL('image/jpeg', 0.8));
             } catch (e) {
                 resolve(null);
             }
@@ -10472,9 +10399,6 @@ function getBase64FromUrl(url) {
         img.src = url;
     });
 }
-
-// --- AUTO-SYNC FOR ALL MODULES WHEN ONLINE ---
-let isSyncingActive = false;
 
 async function syncAllPendingModulesToFirestore() {
     if (isSyncingActive || !navigator.onLine || !shopOwnerId) return;
