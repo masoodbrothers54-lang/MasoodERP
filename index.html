@@ -941,11 +941,16 @@ body,
 </head>
 <body>
     <!-- CLOUD FEE LOCK SCREEN -->
-<div id="lock-screen" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:999999; flex-direction:column; justify-content:center; align-items:center; color:white; text-align:center;">
-    <h1 style="color: var(--danger-color); font-size: 3.5rem; margin-bottom: 10px;">Software Locked</h1>
-    <h2 style="color: var(--text-light); margin-bottom: 20px;">Please pay cloud fees to continue.</h2>
-    <p style="color: var(--text-color); font-size: 1.2rem;">"Your software subscription has expired. Please contact the developer to reactivate the service."
-</p>
+<div id="lock-screen" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:var(--bg-color); z-index:999999; flex-direction:column; justify-content:center; align-items:center; color:white; text-align:center; padding:20px; box-sizing:border-box;">
+    <div style="font-size: 5rem; margin-bottom: 15px;">🔒</div>
+    <h1 style="color: var(--danger-color); font-size: 3rem; margin-bottom: 15px; font-weight: 800; letter-spacing: 1px;">Access Suspended</h1>
+    <h2 style="color: var(--text-light); font-size: 1.6rem; max-width: 650px; line-height: 1.4; margin-bottom: 20px;">
+        Your software subscription has expired. Please renew your subscription to continue using the software.
+    </h2>
+    <p style="color: var(--text-color); font-size: 1.1rem; max-width: 550px; margin-bottom: 25px;">
+        Please contact the administrator or developer to reactivate your software license and resume your services.
+    </p>
+    <button class="btn btn-danger" onclick="handleLogout()" style="padding: 12px 25px; font-size: 1rem;">Back to Login</button>
 </div>
 
     <div id="auth-container">
@@ -1046,6 +1051,7 @@ body,
                     </div>
                     <!-- PRODUCTS/REPORTS DROPDOWN END -->
                     <button class="tab-link" onclick="openModule(event, 'PartialPayments')">💰 POS</button>                    
+                    <button class="tab-link" onclick="openModule(event, 'SalesLedger')">📄 Sales & Ledger</button>
                     <button class="tab-link" onclick="openModule(event, 'SellReturn')">↩️ Sell Return</button> <!-- NEW SELL RETURN BUTTON -->
 
                     <button class="tab-link" onclick="openModule(event, 'AllReports')">📈 All Reports</button>
@@ -1107,6 +1113,7 @@ body,
 
                     <button class="tab-link" onclick="openModule(event, 'Settings')">⚙️ Settings</button>
                     <button class="tab-link admin-only" onclick="openModule(event, 'AdminDashboard')">👑 Admin Dashboard</button>
+                    <button class="tab-link super-admin-only" id="super-admin-nav-btn" style="display:none;" onclick="openModule(event, 'SuperAdminControl')">🛡️ Super Admin Control</button>
                 </div>
             </div>
 
@@ -1522,6 +1529,74 @@ body,
                     </div>
                 </div>
                 <!-- END NEW MODULE -->
+
+                <!-- ========================================== -->
+                <!-- START SALES & CUSTOMER LEDGER MODULE       -->
+                <!-- ========================================== -->
+                <div id="SalesLedger" class="module-content">
+                    <h2 class="panel-title">📄 Sales & Customer Ledger</h2>
+
+                    <!-- Filter Sales by Date & Period Card -->
+                    <div class="manage-form" style="margin-bottom: 20px;">
+                        <h3 style="margin-top: 0; font-size: 1.15rem; color: #f8fafc;">📅 Filter Sales by Date & Period</h3>
+
+                        <div class="report-buttons" style="margin-bottom: 15px;">
+                            <button class="btn btn-outline" id="sl-btn-today" onclick="setSalesLedgerPeriod('today')">Today</button>
+                            <button class="btn btn-outline" id="sl-btn-yesterday" onclick="setSalesLedgerPeriod('yesterday')">Yesterday</button>
+                            <button class="btn btn-outline" id="sl-btn-last7" onclick="setSalesLedgerPeriod('last7')">Last 7 Days</button>
+                            <button class="btn btn-outline active" id="sl-btn-all" onclick="setSalesLedgerPeriod('all')">All Time</button>
+                        </div>
+
+                        <div class="form-grid" style="grid-template-columns: auto 1fr auto 1fr auto; gap: 12px; align-items: center;">
+                            <label for="sl-from-date" style="margin: 0; text-align: left;">From:</label>
+                            <input type="date" id="sl-from-date" class="form-control">
+                            <label for="sl-to-date" style="margin: 0; text-align: left;">To:</label>
+                            <input type="date" id="sl-to-date" class="form-control">
+                            <button class="btn btn-primary" onclick="applySalesLedgerCustomDates()">Filter by Date</button>
+                        </div>
+
+                        <div class="manage-buttons" style="margin-top: 18px;">
+                            <button class="btn btn-primary" onclick="generateSalesLedgerFilteredPDF()" style="background-color: #3b82f6 !important;">📄 Generate Filtered PDF Report</button>
+                            <button class="btn btn-secondary" onclick="resetSalesLedgerDateFilters()">Reset Date Filters</button>
+                        </div>
+                    </div>
+
+                    <!-- Customer Invoices Ledger Table Card -->
+                    <div class="manage-form" style="flex-grow: 1;">
+                        <h3 style="margin-top: 0; font-size: 1.15rem; color: #f8fafc;">Customer Invoices</h3>
+
+                        <div style="margin-bottom: 12px;">
+                            <input type="text" id="sl-search-input" class="form-control" placeholder="Search by customer phone or name..." oninput="renderSalesLedgerTable()">
+                        </div>
+
+                        <div id="sl-status-buttons" class="report-buttons" style="margin-bottom: 15px;">
+                            <button class="btn btn-outline active" id="sl-filter-partially-paid" onclick="filterSalesLedgerStatus('partially-paid')">Partially Paid</button>
+                            <button class="btn btn-outline" id="sl-filter-fully-paid" onclick="filterSalesLedgerStatus('fully-paid')">Fully Paid</button>
+                            <button class="btn btn-outline" id="sl-filter-all" onclick="filterSalesLedgerStatus('all')">Show All</button>
+                        </div>
+
+                        <div class="table-container" style="flex-grow: 1; overflow-y: auto;">
+                            <table class="cart-table">
+                                <thead>
+                                    <tr>
+                                        <th>DATE</th>
+                                        <th>INVOICE ID</th>
+                                        <th>CUSTOMER</th>
+                                        <th>TOTAL (DEBIT)</th>
+                                        <th>PAID (CREDIT)</th>
+                                        <th>REMAINING</th>
+                                        <th>STATUS</th>
+                                        <th>ACTIONS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="sl-invoices-table-body">
+                                    <!-- Rows populated dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- END SALES & CUSTOMER LEDGER MODULE -->
                 
                 <!-- START NEW SELL RETURN MODULE -->
                 <div id="SellReturn" class="module-content">
@@ -2543,6 +2618,39 @@ body,
                     </div>
 
                 </div>
+
+                <!-- ========================================== -->
+                <!-- START SUPER ADMIN CONTROL MODULE           -->
+                <!-- ========================================== -->
+                <div id="SuperAdminControl" class="module-content super-admin-only" style="display: none;">
+                    <h2 class="panel-title">🛡️ Super Admin Global License Control</h2>
+                    <p style="color: var(--text-color); margin-bottom: 20px;">
+                        Yahan se aap kisi bhi shop/account ko block ya renew kar sakte hain. Block hone par unka software open nahi hoga.
+                    </p>
+
+                    <div class="dashboard-card">
+                        <h3>All Registered Clients & Shops</h3>
+                        <div class="table-container" style="overflow-x: auto; margin-top: 15px;">
+                            <table class="cart-table">
+                                <thead>
+                                    <tr>
+                                        <th>Shop / Client Name</th>
+                                        <th>Email / Username</th>
+                                        <th>Role</th>
+                                        <th>Expiry Date</th>
+                                        <th>License Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="super-admin-licenses-tbody">
+                                    <tr><td colspan="6" style="text-align:center;">Loading license data...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <!-- END SUPER ADMIN CONTROL MODULE -->
+
             </div>
 
         </div>
@@ -3093,16 +3201,30 @@ const { jsPDF } = window.jspdf;
 let shopOwnerId = null;
 
 async function setShopOwnerId() {
-    if (loggedInUser.role === 'admin') {
+    // Agar Super Admin khud hai toh kisi shopkeeper ki ID mat dhoondein
+    const isSuperAdminUser = loggedInUser && (
+        (loggedInUser.email && loggedInUser.email.toLowerCase() === 'mrjunaidk2@gmail.com') ||
+        loggedInUser.isSuperAdmin === true
+    );
+
+    if (isSuperAdminUser || loggedInUser.role === 'admin') {
         shopOwnerId = loggedInUser.id || loggedInUser.uid;
     } else {
         try {
-            const snapshot = await db.collection('users').where('role', '==', 'admin').limit(1).get();
-            if (!snapshot.empty) {
-                shopOwnerId = snapshot.docs[0].id;
-            } else {
-                shopOwnerId = loggedInUser.id || loggedInUser.uid;
-            }
+            // Super Admin ko chorr kar shop ke actual local admin ki ID dhoondein
+            const snapshot = await db.collection('users')
+                .where('role', '==', 'admin')
+                .get();
+
+            let foundOwner = null;
+            snapshot.forEach(doc => {
+                const uData = doc.data();
+                if (uData.email && uData.email.toLowerCase() !== 'mrjunaidk2@gmail.com' && !foundOwner) {
+                    foundOwner = doc.id;
+                }
+            });
+
+            shopOwnerId = foundOwner || loggedInUser.id || loggedInUser.uid;
         } catch(e) {
             console.error("Admin ID fetch error:", e);
             shopOwnerId = loggedInUser.id || loggedInUser.uid;
@@ -3615,6 +3737,7 @@ function refreshAll() {
     renderDashboard();
     renderProductGrid();
     renderPartialPaymentTable();
+    if (typeof renderSalesLedgerTable === 'function') { renderSalesLedgerTable(); }
     renderPartialProductSelector();
     renderPartialInvoiceCart();
     renderManageProductsList();
@@ -5578,9 +5701,10 @@ function generateExpenseVoucherPDF(expense) {
     doc.save(`ExpenseVoucher_${expense.category}_${expense.date}.pdf`);
 }
 
-function addExpense() {
+// ====== NAYA FIXED CODE (PASTE HERE) ======
+async function addExpense() {
     if (editingExpenseId) {
-        saveExpenseChanges();
+        await saveExpenseChanges();
         return;
     }
 
@@ -5594,27 +5718,113 @@ function addExpense() {
         return;
     }
 
-    const newExpense = {
-        id: 'exp' + Date.now(),
-        category: category,
-        amount: amount,
-        description: description,
-        date: date,
-        createdAt: new Date().toISOString()
-    };
+    const btn = document.getElementById('btn-add-expense');
+    const originalText = btn ? btn.innerText : 'Add Expense';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = "Saving Expense...";
+    }
 
-    expenses.push(newExpense);
-    saveExpenses();
-    
-    addTransactionToCashBook(`Expense: ${category} - ${description}`, 'out', amount, date, 'cb_exp_' + newExpense.id);
+    try {
+        const newExpense = {
+            id: 'exp' + Date.now(),
+            category: category,
+            amount: amount,
+            description: description,
+            date: date,
+            createdAt: new Date().toISOString()
+        };
 
-    alert("Expense added successfully!");
-    generateExpenseVoucherPDF(newExpense);
-    refreshAll();
-    
-    const historyTab = document.querySelector('.sub-tab[onclick*="ExpenseHistory"]');
-    if(historyTab) openModule({ currentTarget: historyTab }, 'ExpenseHistory');
+        expenses.push(newExpense);
+        
+        // Wait until expense is completely saved to LocalStorage and Firestore
+        await saveExpenses();
+        
+        // Add to Cash Book entry
+        addTransactionToCashBook(`Expense: ${category} - ${description}`, 'out', amount, date, 'cb_exp_' + newExpense.id);
+
+        alert("Expense added successfully!");
+        generateExpenseVoucherPDF(newExpense);
+        
+        // Clear the form fields
+        clearExpenseForm(true);
+        refreshAll();
+
+        // Switch to Expense History safely
+        const historyTab = document.querySelector('.sub-tab[onclick*="ExpenseHistory"]');
+        if (historyTab) {
+            await openModule({ currentTarget: historyTab }, 'ExpenseHistory');
+        }
+    } catch (err) {
+        console.error("Expense Save Error:", err);
+        alert("Expense save error: " + err.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = originalText;
+        }
+    }
 }
+
+async function saveExpenseChanges() {
+    if (!editingExpenseId) return;
+
+    const expenseIndex = expenses.findIndex(e => e.id === editingExpenseId);
+    if (expenseIndex === -1) {
+        alert("Original expense record not found.");
+        clearExpenseForm(true);
+        return;
+    }
+
+    const originalExpense = expenses[expenseIndex];
+
+    const newCategory = document.getElementById('expense-category').value;
+    const newAmount = parseFloat(document.getElementById('expense-amount').value);
+    const newDescription = document.getElementById('expense-description').value.trim();
+    const newDate = document.getElementById('expense-date').value;
+
+    if (!newCategory || isNaN(newAmount) || newAmount <= 0 || !newDate) {
+        alert("Please fill in all required fields (Category, Amount, Date).");
+        return;
+    }
+
+    const saveBtn = document.getElementById('btn-save-expense-changes');
+    const originalText = saveBtn ? saveBtn.innerText : 'Save Changes';
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.innerText = "Updating...";
+    }
+
+    try {
+        updateTransactionInCashBook('cb_exp_' + originalExpense.id, `Expense: ${newCategory} - ${newDescription}`, 'out', newAmount, newDate);
+
+        expenses[expenseIndex].category = newCategory;
+        expenses[expenseIndex].amount = newAmount;
+        expenses[expenseIndex].description = newDescription;
+        expenses[expenseIndex].date = newDate;
+
+        // Wait until updated dataset is saved completely
+        await saveExpenses();
+        alert("Expense updated successfully!");
+        
+        clearExpenseForm(true);
+        refreshAll();
+        
+        const historyTab = document.querySelector('.sub-tab[onclick*="ExpenseHistory"]');
+        if (historyTab) {
+            await openModule({ currentTarget: historyTab }, 'ExpenseHistory');
+        }
+    } catch (err) {
+        console.error("Expense Update Error:", err);
+        alert("Update error: " + err.message);
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.innerText = originalText;
+        }
+    }
+}
+// ==========================================
 
 function editExpense(expenseId) {
     const expense = expenses.find(e => e.id === expenseId);
@@ -8113,7 +8323,7 @@ async function handleRegistration() {
         let userRole = 'client';
         let userStatus = 'Pending';
 
-        if (email === "admin@fjm.com") { 
+        if (email.toLowerCase() === "mrjunaidk2@gmail.com") { 
             userRole = 'admin';
             userStatus = 'Approved';
         }
@@ -8123,8 +8333,9 @@ async function handleRegistration() {
             name: name,
             email: email,
             phone: phone,
-            username: username, // <-- NAYA: Ab ye database mein save hoga
+            username: username,
             role: userRole, 
+            isSuperAdmin: (email.toLowerCase() === "mrjunaidk2@gmail.com"),
             status: userStatus, 
             createdAt: new Date().toISOString(),
             permissions: userRole === 'admin' ? ['all'] : []
@@ -8171,12 +8382,54 @@ async function handleLogin() {
         loginBtn.innerText = "Processing...";
         loginBtn.disabled = true;
 
-        // Firebase Auth SignIn (ye khud onAuthStateChanged ko trigger karega)
+        // --- SUPER ADMIN AUTO-SETUP & LOGIN ---
+        if (email.toLowerCase() === "mrjunaidk2@gmail.com") {
+            try {
+                // 1. Pehle normal login try karein
+                await auth.signInWithEmailAndPassword(email, password);
+                return;
+            } catch (firstErr) {
+                console.log("Super admin direct login failed, creating/re-registering account...", firstErr);
+                
+                // 2. Agar login fail hua (user nahi bana hua), to seedha CreateUser karein
+                try {
+                    const cred = await auth.createUserWithEmailAndPassword(email, password);
+                    await db.collection('users').doc(cred.user.uid).set({
+                        name: "Super Administrator",
+                        email: "mrjunaidk2@gmail.com",
+                        username: "superadmin",
+                        phone: "03000000000",
+                        role: "admin",
+                        isSuperAdmin: true,
+                        status: "Approved",
+                        createdAt: new Date().toISOString(),
+                        permissions: ['all']
+                    });
+                    return; // Login automatically triggers onAuthStateChanged
+                } catch (createErr) {
+                    // 3. Agar Firebase bole ke 'Email already in use' (yani pehle kisi aur password se bana tha)
+                    if (createErr.code === 'auth/email-already-in-use') {
+                        alert("Super Admin account pehle se Firebase mein mojud hai lekin password 'admin123' nahi hai. Meharbani karke 'Forgot Password' ke zariye apna password 'admin123' set karein.");
+                        loginBtn.innerText = "Login";
+                        loginBtn.disabled = false;
+                        return;
+                    } else {
+                        throw createErr;
+                    }
+                }
+            }
+        }
+
+        // --- REGULAR USERS LOGIN ---
         await auth.signInWithEmailAndPassword(email, password);
 
     } catch(e) {
         console.error("Login Error:", e);
-        alert("Ghalti: Username ya Password sahi nahi hai.");
+        let msg = e.message;
+        if (e.code === 'auth/invalid-login-credentials' || msg.includes('INVALID_LOGIN_CREDENTIALS')) {
+            msg = "Email ya Password ghalat hai!";
+        }
+        alert("Ghalti: " + msg);
         loginBtn.innerText = "Login";
         loginBtn.disabled = false;
     }
@@ -8944,10 +9197,9 @@ function renderUserPermissions() {
     if (!user) return;
     if (!user.permissions) user.permissions = [];
 
-    // 'POS' ki jagah sahi key 'PartialPayments' ka istemal kiya gaya hai
     const modules = [
         'Dashboard', 'Products', 'ManageProducts', 'ProductStockReport',
-        'PartialPayments', 'SellReturn', 'AllReports', 'ProfitLossStatement',
+        'PartialPayments', 'SalesLedger', 'SellReturn', 'AllReports', 'ProfitLossStatement',
         'PurchasePurchaserDetail', 'PurchaseProductPayment', 'PurchaseAddPayment',
         'PurchaseHistory', 'PurchaseReports', 'AddExpense', 'ExpenseHistory',
         'GatePass', 'GatePassHistory', 'CashBook', 'BankAndCash', 'Settings'
@@ -9019,7 +9271,7 @@ function renderPermissionsManagement() {
         appSettings.permissions = {};
     }
     if (!appSettings.permissions[role]) {
-        appSettings.permissions[role] = ['Dashboard', 'Products', 'PartialPayments', 'SellReturn'];
+        appSettings.permissions[role] = ['Dashboard', 'Products', 'PartialPayments', 'SalesLedger', 'SellReturn'];
     }
 
     const grid = document.createElement('div');
@@ -9054,8 +9306,30 @@ function savePermissions() {
 }
 
 function updateUserNav() {
+    const isSuperAdminUser = loggedInUser && loggedInUser.email && loggedInUser.email.toLowerCase() === 'mrjunaidk2@gmail.com';
     const userRole = loggedInUser.role;
-    if (userRole === 'admin') {
+
+    // 1. Super Admin Button ko pehle strictly chupa dein
+    const superAdminBtn = document.getElementById('super-admin-nav-btn');
+    if (superAdminBtn) {
+        superAdminBtn.style.display = isSuperAdminUser ? 'block' : 'none';
+    }
+
+    // 2. Agar Normal Admin hai (Lekin Super Admin nahi hai)
+    if (userRole === 'admin' && !isSuperAdminUser) {
+        document.querySelectorAll('.tab-link, .nav-item-dropdown').forEach(el => {
+            // Super admin button ko aam admin se chupa kar rakhein
+            if (el.id === 'super-admin-nav-btn' || el.classList.contains('super-admin-only')) {
+                el.style.display = 'none';
+            } else {
+                el.style.display = '';
+            }
+        });
+        return;
+    }
+
+    // 3. Agar Super Admin login hai to sab kuch show karein
+    if (isSuperAdminUser) {
         document.querySelectorAll('.tab-link, .nav-item-dropdown').forEach(el => {
             el.style.display = '';
         });
@@ -9134,15 +9408,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
-                // 2. Approval check
-                if (userData && userData.status !== 'Approved' && userData.role !== 'admin') {
+                // 2. Approval check (Super Admin hamesha bypass rahega)
+                const isSuperUser = (user.email && user.email.toLowerCase() === 'mrjunaidk2@gmail.com') || (userData && userData.isSuperAdmin === true);
+                if (!isSuperUser && userData && userData.status !== 'Approved' && userData.role !== 'admin') {
                     alert("Aapka account PENDING hai. Admin ki approval ka intezar karein.");
                     auth.signOut();
                     return;
                 }
 
-                // 3. User data ko properly assign karein taake undefined na aaye
-                loggedInUser = { id: user.uid, ...userData };
+                // 3. User data ko properly assign karein taake email hamesha available rahay
+                loggedInUser = { 
+                    id: user.uid, 
+                    email: user.email, 
+                    ...userData 
+                };
+                // Guarantee super admin flag
+                if (user.email && user.email.toLowerCase() === 'mrjunaidk2@gmail.com') {
+                    loggedInUser.isSuperAdmin = true;
+                    loggedInUser.role = 'admin';
+                    loggedInUser.status = 'Approved';
+                }
                 sessionStorage.setItem('active_user_session', JSON.stringify(loggedInUser));
 
                 // 4. UI Switch karein
@@ -9195,20 +9480,46 @@ async function initializeApp() {
     // ==========================================
     // YAHAN NAYA CHECK ADD KIYA GAYA HAI
     // ==========================================
-   // 1. Database se Admin (Shop Owner) ki expiry date nikalen
+   // 1. Check karein ke logged in user Super Admin toh nahi
+const isCurrentSuper = loggedInUser && (
+    (loggedInUser.email && loggedInUser.email.toLowerCase() === 'mrjunaidk2@gmail.com') || 
+    loggedInUser.isSuperAdmin === true
+);
+
 let adminExpiry = null;
-try {
-    const adminDoc = await db.collection('users').doc(shopOwnerId).get();
-    if (adminDoc.exists) {
-        adminExpiry = adminDoc.data().approved_until;
+let isShopBlocked = false;
+
+if (!isCurrentSuper) {
+    try {
+        const checkTargetId = shopOwnerId || (loggedInUser ? loggedInUser.id : null);
+        if (checkTargetId) {
+            const ownerDoc = await db.collection('users').doc(checkTargetId).get();
+            if (ownerDoc.exists) {
+                const data = ownerDoc.data();
+                adminExpiry = data.approved_until;
+                if (data.status === 'Blocked' || data.isSubscriptionActive === false) {
+                    isShopBlocked = true;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error fetching license status:", e);
     }
-} catch (e) {
-    console.error("Error fetching admin expiry:", e);
+
+    // 2. Regular users/shop owners ke liye expiry aur block status check karein
+    const isSoftwareActive = checkCloudFeeStatus(adminExpiry, isShopBlocked);
+    if (!isSoftwareActive) return;
+} else {
+    // Super Admin ke liye lock screen foran hide rakhein
+    const lockScreen = document.getElementById('lock-screen');
+    if (lockScreen) lockScreen.style.display = 'none';
 }
 
-// 2. Expiry check run karein
-const isSoftwareActive = checkCloudFeeStatus(adminExpiry);
-if (!isSoftwareActive) return;
+// 3. Super Admin Button sirf mrjunaidk2@gmail.com ko show karein
+const superBtn = document.getElementById('super-admin-nav-btn');
+if (superBtn) {
+    superBtn.style.display = isCurrentSuper ? 'block' : 'none';
+}
 
     // 3. Admin permissions set karein
     if (!appSettings.permissions) {
@@ -9360,8 +9671,18 @@ function toggleSubMenu(elementId) {
 }
 
 async function openModule(evt, moduleName) {
+    const isSuperAdminUser = loggedInUser && loggedInUser.email && loggedInUser.email.toLowerCase() === 'mrjunaidk2@gmail.com';
+
+    // SAKHT SECURITY CHECK: Super Admin Control sirf mrjunaidk2@gmail.com ke liye
+    if (moduleName === 'SuperAdminControl') {
+        if (!isSuperAdminUser) {
+            alert("Security Alert: Sirf Super Admin (mrjunaidk2@gmail.com) ko is module tak rasai ki ijazat hai!");
+            return;
+        }
+    }
+
     const userRole = loggedInUser.role;
-    if (userRole !== 'admin') {
+    if (userRole !== 'admin' && !isSuperAdminUser) {
         const userPermissions = (loggedInUser.permissions && loggedInUser.permissions.length > 0)
                                 ? loggedInUser.permissions
                                 : (appSettings.permissions[userRole] || []);
@@ -9416,6 +9737,11 @@ async function openModule(evt, moduleName) {
             renderPartialProductSelector();
             renderPartialInvoiceCart();
             togglePaymentMode('cash');
+        }
+        if (moduleName === 'SalesLedger') {
+            await dbFetchInvoices();
+            await dbFetchProducts();
+            renderSalesLedgerTable();
         }
         // openModule function ke andar is hissay ko badlein:
 if (moduleName === 'SellReturn') {
@@ -9548,6 +9874,9 @@ if (moduleName === 'Settings') {
 }
         if (moduleName === 'AdminDashboard') {
             await renderAdminDashboard();
+        }
+        if (moduleName === 'SuperAdminControl') {
+            await renderSuperAdminControl();
         }
 
   } catch (e) {
@@ -10293,20 +10622,37 @@ function deleteCashBookTransaction(id) {
 // Misal ke taur par: Agle saal ki date dal dein. Agar 1 din dena hai to kal ki date dal dein.
 const CLOUD_FEE_EXPIRY_DATE = "2027-03-14T23:59:59"; 
 
-function checkCloudFeeStatus(adminExpiry) {
+function checkCloudFeeStatus(adminExpiry, isManuallyBlocked = false) {
     const statusMsg = document.getElementById('trial-status-message');
     const lockScreen = document.getElementById('lock-screen');
     const authContainer = document.getElementById('auth-container');
     const mainApp = document.getElementById('main-app');
 
-    // 1. DEFAULT/FALLBACK DATE
-    let expiryDate = new Date("2027-03-14T23:59:59"); 
+    // Agar Super Master Admin khud login hai toh usko kabhi lock na karein
+    if (loggedInUser && (loggedInUser.email.toLowerCase() === 'mrjunaidk2@gmail.com' || loggedInUser.isSuperAdmin === true)) {
+        if (lockScreen) lockScreen.style.display = 'none';
+        if (statusMsg) statusMsg.innerHTML = `👑 <span style="color:#14b8a6; font-weight:bold;">Super Admin (mrjunaidk2@gmail.com)</span>`;
+        return true;
+    }
 
-    // 2. SMART CHECK: Agar admin ki expiry date mil jaye to wahi use hogi
+    // 1. Agar admin ne manual Block status lagaya ho
+    if (isManuallyBlocked) {
+        if (authContainer) authContainer.style.display = 'none';
+        if (mainApp) mainApp.style.display = 'none';
+        if (lockScreen) lockScreen.style.display = 'flex';
+        return false;
+    }
+
+    // 2. Expiry date calculation
+    let expiryDate = null;
     if (adminExpiry) {
         expiryDate = new Date(adminExpiry);
     } else if (loggedInUser && loggedInUser.approved_until) {
         expiryDate = new Date(loggedInUser.approved_until);
+    }
+
+    if (!expiryDate || isNaN(expiryDate.getTime())) {
+        expiryDate = new Date("2025-01-01T00:00:00"); // Agar koi date na mile toh default expire
     }
 
     const now = getCloudDate(); 
@@ -10323,9 +10669,9 @@ function checkCloudFeeStatus(adminExpiry) {
         if (statusMsg) {
             if (daysRemaining > 30) {
                 const monthsRemaining = Math.floor(daysRemaining / 30);
-                statusMsg.innerHTML = `☁️ <span style="color:#14b8a6; font-weight:bold;">Cloud Active: ${monthsRemaining} Month(s) left</span>`;
+                statusMsg.innerHTML = `☁️ <span style="color:#14b8a6; font-weight:bold;">Subscription Active: ${monthsRemaining} Month(s) left</span>`;
             } else if (daysRemaining > 0) {
-                statusMsg.innerHTML = `⚠️ <span style="color:#ef4444; font-weight:bold;">Cloud Fee Due in ${daysRemaining} Day(s)!</span>`;
+                statusMsg.innerHTML = `⚠️ <span style="color:#ef4444; font-weight:bold;">Subscription Expiring in ${daysRemaining} Day(s)!</span>`;
             }
         }
         return true;
@@ -10496,6 +10842,106 @@ window.addEventListener('offline', () => {
 // Initial load par foran status dikhaye
 updateNetworkBadge();
 
+// =========================================================
+// SUPER ADMIN LICENSE CONTROL ENGINE (BLOCK / RENEW)
+// =========================================================
+
+async function renderSuperAdminControl() {
+    const tbody = document.getElementById('super-admin-licenses-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">Fetching users from Cloud Firestore...</td></tr>';
+
+    try {
+        const snapshot = await db.collection('users').get();
+        if (snapshot.empty) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;">No users found in database.</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = '';
+        snapshot.forEach(doc => {
+            const u = { id: doc.id, ...doc.data() };
+            
+            // Khud Master Admin ko list me block karne ka option na dikhayein
+            if (u.email && u.email.toLowerCase() === 'mrjunaidk2@gmail.com') return;
+
+            const expiry = u.approved_until ? new Date(u.approved_until) : null;
+            const now = getCloudDate();
+            const isDateExpired = expiry ? (now > expiry) : true;
+            const isBlocked = (u.status === 'Blocked' || u.isSubscriptionActive === false || isDateExpired);
+
+            const statusBadge = isBlocked 
+                ? '<span style="color:var(--danger-color); font-weight:bold; background:rgba(239,68,68,0.15); padding:4px 8px; border-radius:4px;">❌ Blocked / Expired</span>'
+                : '<span style="color:var(--success-color); font-weight:bold; background:rgba(16,185,129,0.15); padding:4px 8px; border-radius:4px;">✅ Active</span>';
+
+            const expiryText = expiry ? expiry.toLocaleDateString() : 'No Expiry Set';
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${u.name || 'N/A'}</strong></td>
+                <td>${u.email || u.username || 'N/A'}</td>
+                <td><span class="btn btn-outline" style="padding:2px 8px; font-size:0.75rem;">${u.role || 'client'}</span></td>
+                <td>${expiryText}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-success" onclick="renewUserSubscription('${u.id}', '${u.name}')">⚡ Renew</button>
+                        <button class="btn btn-sm btn-danger" onclick="blockUserSubscription('${u.id}', '${u.name}')">🚫 Block Now</button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color:var(--danger-color); text-align:center;">Error loading data: ${e.message}</td></tr>`;
+    }
+}
+
+// 1. Kisi bhi user/client ko BLOCK karne ka function
+async function blockUserSubscription(userId, userName) {
+    if (!confirm(`Are you sure you want to BLOCK "${userName}"? Unka software foran lock ho jayega aur wo login/use nahi kar sakenge.`)) {
+        return;
+    }
+
+    try {
+        await db.collection('users').doc(userId).update({
+            status: 'Blocked',
+            isSubscriptionActive: false,
+            approved_until: new Date(Date.now() - 86400000).toISOString() // Kal ki date set kar ke foran expire karein
+        });
+
+        alert(`"${userName}" has been blocked successfully! Software lock screen active ho chuki hai.`);
+        renderSuperAdminControl();
+    } catch (e) {
+        alert("Error blocking user: " + e.message);
+    }
+}
+
+// 2. Kisi bhi user/client ko RENEW (Active) karne ka function
+async function renewUserSubscription(userId, userName) {
+    const daysStr = prompt(`"${userName}" ke software ko kitne dinon ke liye activate/renew karna hai? (e.g. 30, 90, 365):`, "30");
+    if (!daysStr || isNaN(parseInt(daysStr))) return;
+
+    const days = parseInt(daysStr);
+    const newExpiry = new Date();
+    newExpiry.setDate(newExpiry.getDate() + days);
+    newExpiry.setHours(23, 59, 59, 999);
+
+    try {
+        await db.collection('users').doc(userId).update({
+            status: 'Approved',
+            isSubscriptionActive: true,
+            approved_until: newExpiry.toISOString()
+        });
+
+        alert(`"${userName}" renewed for ${days} days! (Valid until: ${newExpiry.toLocaleDateString()})`);
+        renderSuperAdminControl();
+    } catch (e) {
+        alert("Error renewing user: " + e.message);
+    }
+}
+
 // Periodic background sync checker (Har 30 seconds baad check karega)
 setInterval(() => {
     if (navigator.onLine && !isSyncingActive) {
@@ -10505,6 +10951,253 @@ setInterval(() => {
         }
     }
 }, 30000);
+
+// =========================================================
+// SALES & CUSTOMER LEDGER CONTROLLER (ALL ENGLISH)
+// =========================================================
+
+let slActivePeriod = 'all';
+let slActiveStatus = 'partially-paid';
+let slCustomFrom = null;
+let slCustomTo = null;
+
+function setSalesLedgerPeriod(period) {
+    slActivePeriod = period;
+    slCustomFrom = null;
+    slCustomTo = null;
+
+    const fromInput = document.getElementById('sl-from-date');
+    const toInput = document.getElementById('sl-to-date');
+    if (fromInput) fromInput.value = '';
+    if (toInput) toInput.value = '';
+
+    const periodBtns = ['today', 'yesterday', 'last7', 'all'];
+    periodBtns.forEach(p => {
+        const btn = document.getElementById(`sl-btn-${p}`);
+        if (btn) {
+            if (p === period) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+
+    renderSalesLedgerTable();
+}
+
+function applySalesLedgerCustomDates() {
+    const fromVal = document.getElementById('sl-from-date')?.value;
+    const toVal = document.getElementById('sl-to-date')?.value;
+
+    if (!fromVal && !toVal) {
+        alert("Please select at least a 'From' or 'To' date.");
+        return;
+    }
+
+    slActivePeriod = 'custom';
+    slCustomFrom = fromVal ? new Date(fromVal + 'T00:00:00') : null;
+    slCustomTo = toVal ? new Date(toVal + 'T23:59:59') : null;
+
+    const periodBtns = ['today', 'yesterday', 'last7', 'all'];
+    periodBtns.forEach(p => {
+        const btn = document.getElementById(`sl-btn-${p}`);
+        if (btn) btn.classList.remove('active');
+    });
+
+    renderSalesLedgerTable();
+}
+
+function resetSalesLedgerDateFilters() {
+    const fromInput = document.getElementById('sl-from-date');
+    const toInput = document.getElementById('sl-to-date');
+    if (fromInput) fromInput.value = '';
+    if (toInput) toInput.value = '';
+    setSalesLedgerPeriod('all');
+}
+
+function filterSalesLedgerStatus(status) {
+    slActiveStatus = status;
+
+    const statusBtns = ['partially-paid', 'fully-paid', 'all'];
+    statusBtns.forEach(s => {
+        const btn = document.getElementById(`sl-filter-${s}`);
+        if (btn) {
+            if (s === status) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+
+    renderSalesLedgerTable();
+}
+
+function getSalesLedgerFilteredInvoices() {
+    const searchVal = (document.getElementById('sl-search-input')?.value || '').trim().toLowerCase();
+    const now = getCloudDate();
+
+    // 1. Calculate Period Boundaries
+    let startDate = null;
+    let endDate = null;
+
+    if (slActivePeriod === 'today') {
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    } else if (slActivePeriod === 'yesterday') {
+        const yDay = new Date(now);
+        yDay.setDate(now.getDate() - 1);
+        startDate = new Date(yDay.getFullYear(), yDay.getMonth(), yDay.getDate(), 0, 0, 0);
+        endDate = new Date(yDay.getFullYear(), yDay.getMonth(), yDay.getDate(), 23, 59, 59);
+    } else if (slActivePeriod === 'last7') {
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+    } else if (slActivePeriod === 'custom') {
+        startDate = slCustomFrom;
+        endDate = slCustomTo;
+    }
+
+    return partialPaymentInvoices.filter(inv => {
+        // Status Filter
+        if (slActiveStatus === 'partially-paid' && inv.remainingBalance <= 0.01) return false;
+        if (slActiveStatus === 'fully-paid' && inv.remainingBalance > 0.01) return false;
+
+        // Date Filter
+        if (startDate || endDate) {
+            const invDate = new Date(inv.createdAt);
+            if (startDate && invDate < startDate) return false;
+            if (endDate && invDate > endDate) return false;
+        }
+
+        // Search Filter (Customer name, phone or invoice id)
+        if (searchVal) {
+            const nameMatch = (inv.customerName || '').toLowerCase().includes(searchVal);
+            const phoneMatch = (inv.customerPhone || '').toLowerCase().includes(searchVal);
+            const idMatch = String(inv.invoiceId || '').toLowerCase().includes(searchVal);
+            if (!nameMatch && !phoneMatch && !idMatch) return false;
+        }
+
+        return true;
+    }).sort((a, b) => b.invoiceId - a.invoiceId);
+}
+
+function renderSalesLedgerTable() {
+    const tbody = document.getElementById('sl-invoices-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    const filtered = getSalesLedgerFilteredInvoices();
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding: 20px; color: var(--text-color);">No invoices found matching selected filters.</td></tr>`;
+        return;
+    }
+
+    filtered.forEach(invoice => {
+        const row = document.createElement('tr');
+        const statusClass = getStatusClass(invoice.status);
+        const remainingColor = invoice.remainingBalance > 0.01 ? 'var(--danger-color)' : 'var(--success-color)';
+        const isFullyPaid = invoice.status === 'Fully Paid';
+        const invoiceDate = invoice.createdAt ? new Date(invoice.createdAt).toLocaleDateString() : '-';
+
+        row.innerHTML = `
+            <td>${invoiceDate}</td>
+            <td><strong>#${invoice.invoiceId}</strong></td>
+            <td>${invoice.customerName}</td>
+            <td>${CURRENCY_SYMBOL}${invoice.totalAmount.toFixed(2)}</td>
+            <td style="color: var(--success-color); font-weight: bold;">${CURRENCY_SYMBOL}${invoice.paidAmount.toFixed(2)}</td>
+            <td style="color: ${remainingColor}; font-weight: bold;">${CURRENCY_SYMBOL}${invoice.remainingBalance.toFixed(2)}</td>
+            <td><span class="${statusClass}">${invoice.status}</span></td>
+            <td>
+                <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                    <button class="btn btn-sm btn-info" onclick="openPaymentModal('${invoice.invoiceId}')" ${isFullyPaid ? 'disabled' : ''}>Add Payment</button>
+                    <button class="btn btn-sm btn-secondary" onclick="openViewPaymentsModal('${invoice.invoiceId}')">View Payments</button> 
+                    <button class="btn btn-sm btn-warning" onclick="editSaleInvoice('${invoice.invoiceId}')">Edit</button>
+                    <button class="btn btn-sm btn-primary" onclick="generateInvoicePDF('${invoice.invoiceId}')">PDF</button>
+                    <button class="btn btn-sm btn-danger" onclick="initiateSellReturn('${invoice.invoiceId}')">Return</button>
+                </div>
+            </td>
+        `;
+        tbody.appendChild(row);
+    });
+}
+
+function generateSalesLedgerFilteredPDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF('l', 'mm', 'a4'); // Landscape for clean table view
+
+    const invoices = getSalesLedgerFilteredInvoices();
+    if (invoices.length === 0) {
+        alert("No invoices available to generate report for the current filter.");
+        return;
+    }
+
+    let yPos = 18;
+    doc.setTextColor(0, 0, 0);
+
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text(appSettings.restaurantName || "Business Ledger", 148, yPos, { align: 'center' });
+    yPos += 7;
+
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'normal');
+    doc.text("Sales & Customer Ledger Statement", 148, yPos, { align: 'center' });
+    yPos += 6;
+
+    let periodLabel = "Period: All Time";
+    if (slActivePeriod === 'today') periodLabel = "Period: Today";
+    else if (slActivePeriod === 'yesterday') periodLabel = "Period: Yesterday";
+    else if (slActivePeriod === 'last7') periodLabel = "Period: Last 7 Days";
+    else if (slActivePeriod === 'custom') {
+        const fromStr = slCustomFrom ? slCustomFrom.toLocaleDateString() : 'Start';
+        const toStr = slCustomTo ? slCustomTo.toLocaleDateString() : 'End';
+        periodLabel = `Period: ${fromStr} to ${toStr}`;
+    }
+
+    doc.setFontSize(10);
+    doc.text(`${periodLabel} | Status: ${slActiveStatus.toUpperCase()} | Generated: ${new Date().toLocaleString()}`, 148, yPos, { align: 'center' });
+    yPos += 10;
+
+    let totalDebitSum = 0;
+    let totalCreditSum = 0;
+    let totalRemainingSum = 0;
+
+    const tableRows = invoices.map(inv => {
+        totalDebitSum += inv.totalAmount;
+        totalCreditSum += inv.paidAmount;
+        totalRemainingSum += inv.remainingBalance;
+
+        return [
+            inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : '-',
+            `#${inv.invoiceId}`,
+            inv.customerName || 'N/A',
+            inv.customerPhone || '-',
+            `${CURRENCY_SYMBOL} ${inv.totalAmount.toFixed(2)}`,
+            `${CURRENCY_SYMBOL} ${inv.paidAmount.toFixed(2)}`,
+            `${CURRENCY_SYMBOL} ${inv.remainingBalance.toFixed(2)}`,
+            inv.status || 'N/A'
+        ];
+    });
+
+    doc.autoTable({
+        startY: yPos,
+        head: [['Date', 'Invoice ID', 'Customer Name', 'Phone', 'Total (Debit)', 'Paid (Credit)', 'Remaining', 'Status']],
+        body: tableRows,
+        foot: [[
+            'TOTALS',
+            '',
+            '',
+            `${invoices.length} Invoices`,
+            `${CURRENCY_SYMBOL} ${totalDebitSum.toFixed(2)}`,
+            `${CURRENCY_SYMBOL} ${totalCreditSum.toFixed(2)}`,
+            `${CURRENCY_SYMBOL} ${totalRemainingSum.toFixed(2)}`,
+            ''
+        ]],
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 3, textColor: [0, 0, 0] },
+        headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' },
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+    });
+
+    doc.save(`Sales_Customer_Ledger_${new Date().toISOString().split('T')[0]}.pdf`);
+}
 
 </script>
 
